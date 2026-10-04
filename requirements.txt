@@ -1,0 +1,7 @@
+databento
+pandas
+numpy
+pyarrow
+pyyaml
+plotly
+ipykernel
