@@ -1,11 +1,14 @@
 import argparse
 import csv
+import sys
 from datetime import date, datetime
 from pathlib import Path
 
 import databento as db
 import pandas as pd
 import yaml
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # lets us import src/finm37000
 
 
 def get_client():
