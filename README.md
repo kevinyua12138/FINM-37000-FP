@@ -40,3 +40,18 @@ Weekly notes are in [`MeetingNotes/`](MeetingNotes/).
 | Yash Jain | yashjain@uchicago.edu | [yashjain12](https://github.com/yashjain12) |
 
 Note: Simon and Yash have been made collaborators on this GitHub repository, so we push branches straight into Kevin's repository instead of working from forks. Changes still go through pull requests that Kevin merges.
+
+## Roll and calendar flags (issue #4)
+
+Generate 2025 ES roll, holiday, early-close, CPI, NFP, and FOMC day flags:
+
+```sh
+python3 main.py
+python3 -m unittest discover -s tests -v
+```
+
+This offline command writes `data/processed/calendar_2025.csv`; it requires no
+API key or third-party packages. Use `--start` and `--end` to select a date range.
+See [calendar documentation](docs/calendar.md) for joining flags onto downloaded
+data, source references, holiday semantics, and supplying actual `ES.v.0` roll
+dates. CME scheduled rolls and Databento volume-based transitions are separate.
