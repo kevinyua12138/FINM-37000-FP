@@ -55,3 +55,11 @@ API key or third-party packages. Use `--start` and `--end` to select a date rang
 See [calendar documentation](docs/calendar.md) for joining flags onto downloaded
 data, source references, holiday semantics, and supplying actual `ES.v.0` roll
 dates. CME scheduled rolls and Databento volume-based transitions are separate.
+
+## Imbalance and microprice features (issue #7)
+
+`from features import book_features` (with `src` on the Python path) computes
+`I_1`, `I_N`, microprice, gap `G`, and depth slope `DS` from decoded Databento
+snapshot columns. Use `levels=1` for mbp-1 and `levels=10` for mbp-10; unavailable
+depth features remain missing. See [formulas and usage](docs/book_features.md).
+Run `python3 -m unittest discover -s tests -v` to verify the features and calendar.
