@@ -5,3 +5,5 @@ pyarrow
 pyyaml
 plotly
 ipykernel
+matplotlib
+pytest
