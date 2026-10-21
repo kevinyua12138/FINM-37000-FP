@@ -10,3 +10,29 @@ session:
   timezone: America/Chicago
   download_start: "08:30"
   download_end: "15:00"
+
+shocks:
+  schema: mbp-1
+  window_s: 10
+  quantile: 0.995
+  history_days: 5
+  cooldown_s: 120
+  output: data/processed/shocks.csv
+
+research:
+  train_start: "2025-01-02"
+  train_end: "2025-04-30"
+  test_start: "2025-05-01"
+  test_end: "2025-06-30"
+  observation_s: 3
+  latency_ms: 100
+  max_stale_s: 1
+  refill_cutoff: 0.5       # fixed recovery definition, not fitted to the test sample
+  ofi_cutoff: 0.0         # positive = same-direction flow; negative = reversing flow
+  horizon_s: 30
+  fee_per_side_usd: 2.50  # illustrative assumption, not an account-specific fee quote
+  dollars_per_point: 50
+  tick_size: 0.25
+  contracts: 1
+  model_follow_probability: 0.55
+  model_fade_probability: 0.45

@@ -30,14 +30,16 @@ def forward_return_labels(quotes, events, horizons=HORIZONS, max_stale=MAX_STALE
     index, mid, inst = quotes.index, quotes["mid"].to_numpy(), quotes["instrument_id"].to_numpy()
     out = events.copy()
     out["entry_time"] = out["t0"].map(entry_time)
+    out["actual_entry_time"] = pd.Series(pd.NaT, index=out.index, dtype=out["entry_time"].dtype)
     labels = {h: np.full(len(out), np.nan) for h in horizons}
 
     for k, (entry_ts, direction) in enumerate(zip(out["entry_time"], out["direction"])):
         i = index.searchsorted(entry_ts)
         if i >= len(index) or index[i] - entry_ts > max_stale:
             continue
+        out.iloc[k, out.columns.get_loc("actual_entry_time")] = index[i]
         for h in horizons:
-            target = entry_ts + pd.Timedelta(seconds=h)
+            target = index[i] + pd.Timedelta(seconds=h)
             j = index.searchsorted(target)
             if j >= len(index) or index[j] - target > max_stale:
                 continue

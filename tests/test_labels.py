@@ -78,3 +78,10 @@ def test_issue6_figures_are_written(tmp_path):
     paths = make_issue6_figures(ev, tmp_path)
     assert len(paths) == 5 and all(p.exists() and p.stat().st_size > 0 for p in paths)
     assert (tmp_path / "events.csv").exists()
+
+
+def test_horizon_starts_at_actual_quote_not_earliest_target():
+    q = quotes([(3.4, 100.0, 1), (8.1, 90.0, 1), (8.4, 101.0, 1)])
+    out = forward_return_labels(q, events())
+    assert out['actual_entry_time'].iloc[0] == T0 + pd.Timedelta('3.4s')
+    assert out['y_5s'].iloc[0] == pytest.approx(.01)

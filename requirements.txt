@@ -7,3 +7,6 @@ plotly
 ipykernel
 matplotlib
 pytest
+scipy
+statsmodels
+scikit-learn
