@@ -143,3 +143,35 @@ are retried. It streams daily requests with bounded concurrency. Private raw
 quotes and derived Parquet caches stay under ignored `data/`; only derived event
 and trade summaries are committed. The run requires every expected regular
 session and saves a code digest, coverage, frozen configuration and figures.
+
+## Simple reversal comparisons
+
+Alongside the existing refill/OFI rule, report these predeclared alternatives at
+30 seconds, all using the same shock detector and three-second observation:
+
+1. **High-refill fade:** fade only when RR >= 0.5.
+2. **Refill plus book imbalance:** follow when RR < 0.5 and endpoint book
+   imbalance points in the shock direction; fade when RR >= 0.5 and it opposes
+   the shock. Otherwise stay out.
+3. **Large opposing displayed book:** fade when the largest observed quantity
+   on the eaten side during the three seconds reaches its January–April 95th
+   percentile. For an upward shock this is ask depth; for a downward shock it
+   is bid depth. Save the training cutoff in contracts.
+4. **High refill plus large opposing book:** require both conditions to fade.
+5. **Large executed trade:** separately fade when the maximum trade-print size
+   in the three seconds reaches its January–April 95th percentile.
+6. **High refill plus large trade:** require both conditions to fade.
+
+The 95th percentile defines “large quantity”; the **99.5th percentile still
+defines the ten-second price shock**. These are different quantities. Depth is
+aggregate displayed size at the best price, not the size of an identifiable
+individual order. A trade print also need not equal a whole parent order.
+Training-only thresholds are saved in `big_order_cutoffs.json`. No choice among
+these alternatives is made using test P&L; they are parallel hypothesis tests,
+and multiple comparisons make an isolated positive result less convincing.
+
+The OFI increment follows [Cont, Kukanov and Stoikov, The Price Impact of Order
+Book Events](https://arxiv.org/abs/1011.6402). The project's normalization by
+sum of absolute increments and its shock-direction sign are additional explicit
+conventions. Their equity-market evidence does not establish profitability for
+this ES futures strategy.

@@ -143,6 +143,7 @@ def evaluate(events, coverage, cfg, output):
     ax.axhline(0,color='gray',lw=.8); ax.set(xlabel='Seconds after actual entry',ylabel='Mean move in shock direction (ticks)',
                                          title='Development sample only: average price path')
     ax.legend(); fig.tight_layout(); fig.savefig(output/'event_paths.png',dpi=170); plt.close(fig)
+    simple_rule_comparison(train, test, coverage, cfg, output)
     write_report(output, metrics_df, model, coverage, ev)
     return metrics_df
 
@@ -196,6 +197,21 @@ def write_report(output, summary, model, coverage, events):
                   'The scaler and coefficients use January–April only. '
                   'AUC measures discrimination, not profitability.', '',
                   '![Held-out model calibration](model_calibration.png)', '']
+    simple = pd.read_csv(output/'simple_rules.csv')
+    lines += ['## Your simple rules: held-out comparison', '',
+              'All rules use 99.5th-percentile 10-second shocks, observe the book for three seconds, '
+              'enter after 100 ms, and hold for 30 seconds. Large means at least the training-sample '
+              '95th percentile. Opposing displayed depth means ask quantity after an up-shock or '
+              'bid quantity after a down-shock. These are displayed quantities, not individual order identities.', '',
+              '| Rule | Trades | Net P&L | Mean net/trade | 95% clustered interval |',
+              '|---|---:|---:|---:|---|']
+    for x in simple[simple.split.eq('test')].to_dict('records'):
+        lines.append(f"| {x['rule']} | {x['trades']} | ${number(x['net_pnl_usd'])} | "
+                     f"${number(x['mean_net_usd'])} | [${number(x['net_lo'])}, ${number(x['net_hi'])}] |")
+    lines += ['', '![Simple rule comparison](simple_rules.png)', '',
+              'See `simple_rules.csv`, `simple_rule_trades.csv` and `big_order_cutoffs.json`. '
+              'These parallel hypotheses were specified before the held-out evaluation; '
+              'the best realized result is not a newly validated strategy.', '']
     lines += [
         '## Interpretation and limitations', '',
         '- Refill is the team’s mbp-1 proxy, partly a price-recovery measure; hidden depth is unobserved.',
@@ -218,3 +234,43 @@ def write_report(output, summary, model, coverage, events):
         'See `../../docs/research_spec.md` for setup, formulas, sources and assumptions.',
     ]
     (output/'README.md').write_text('\n'.join(lines)+'\n')
+
+
+def simple_rule_comparison(train, test, coverage, cfg, output):
+    """User-requested hypotheses; size thresholds learned on development events only."""
+    r = cfg['research']
+    quantile = r['big_order_percentile']
+    cutoffs = {c: float(train[c].quantile(quantile)) for c in ['max_eaten_depth','max_trade_size']}
+    (output/'big_order_cutoffs.json').write_text(json.dumps(dict(percentile=quantile, **cutoffs), indent=2))
+    rows, trade_lists = [], []
+    for split, ev in [('train',train), ('test',test)]:
+        days = coverage.loc[coverage.date.le(r['train_end']) if split=='train' else coverage.date.ge(r['test_start']), 'date']
+        fast = ev.refill_ratio.ge(r['refill_cutoff'])
+        slow = ev.refill_ratio.lt(r['refill_cutoff'])
+        big_book = ev.max_eaten_depth.ge(cutoffs['max_eaten_depth']) & ev.max_eaten_depth.gt(0)
+        big_trade = ev.max_trade_size.ge(cutoffs['max_trade_size']) & ev.max_trade_size.gt(0)
+        rules = {
+            'existing_refill_and_flow': ev.signal,
+            'high_refill_fade': np.where(fast,-1,0),
+            'refill_and_book_imbalance': np.select([slow & ev.I_1.gt(0),fast & ev.I_1.lt(0)],[1,-1],default=0),
+            'large_opposing_book_fade': np.where(big_book,-1,0),
+            'high_refill_and_large_book_fade': np.where(fast & big_book,-1,0),
+            'large_trade_fade': np.where(big_trade,-1,0),
+            'high_refill_and_large_trade_fade': np.where(fast & big_trade,-1,0),
+        }
+        for rule, signal in rules.items():
+            trades = simulate(ev,cfg,signal=signal)
+            trades['rule'],trades['split']=rule,split
+            trade_lists.append(trades)
+            rows.append(dict(rule=rule,split=split,**metrics(trades,days),
+                             **{'net_'+k:v for k,v in clustered_mean(trades.net_pnl,trades.date).items()}))
+    table=pd.DataFrame(rows)
+    table.to_csv(output/'simple_rules.csv',index=False)
+    pd.concat(trade_lists,ignore_index=True).to_csv(output/'simple_rule_trades.csv',index=False)
+    heldout=table[table.split.eq('test')]
+    fig,ax=plt.subplots(figsize=(10,5))
+    labels=[x.replace('_',' ') for x in heldout.rule]
+    ax.barh(labels,heldout.net_pnl_usd,color=np.where(heldout.net_pnl_usd>=0,'#237a57','#b84a48'))
+    ax.axvline(0,color='black',lw=.8)
+    ax.set(xlabel='Net simulated P&L ($), one ES contract',title='May–June 2025: simple rule comparison (30s holding period)')
+    ax.invert_yaxis();fig.tight_layout();fig.savefig(output/'simple_rules.png',dpi=170);plt.close(fig)
