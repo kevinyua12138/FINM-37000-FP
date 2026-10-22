@@ -10,3 +10,11 @@ session:
   timezone: America/Chicago
   download_start: "08:30"
   download_end: "15:00"
+
+shocks:
+  schema: bbo-1s            # one quote per second is enough to find shocks
+  window_s: 10              # move measured over the last 10 seconds
+  quantile: 0.995           # threshold = 99.5th percentile of past moves...
+  history_days: 5           # ...over the previous 5 trading days only
+  cooldown_s: 120           # ignore new shocks for 120 s after one
+  output: data/processed/shocks.csv
