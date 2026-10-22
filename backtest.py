@@ -11,8 +11,8 @@ from matplotlib.ticker import StrMethodFormatter
 HERE = Path(__file__).resolve().parent
 SHOCK_THRESHOLD = 3.5  # 99th percentile from Jan 2, 3, 6, 7, 8; fixed thereafter.
 H1_RR_MAX = 0.25  # RR strictly below this: depleted depth.
-H2_RR_MIN = 1.5   # RR at least this: depth grew by 50%.
-H1_CANDIDATES, H2_CANDIDATES = (0.25, 0.5), (1.0, 1.5)
+H2_RR_MIN = 0.25  # At least 25% of the post-shock depth remains.
+H2_CANDIDATES = (0.25, 1.0)  # H1 stays fixed; compare H2 only.
 FLOW_CUTOFF = 0.05  # More than 5% net quote-flow pressure.
 POINT_VALUE = 50.0  # One ES contract.
 ROUND_TRIP_FEE = 5.0
@@ -106,13 +106,11 @@ def compare_thresholds(raw):
     # Only January–April selects thresholds; May–June never enters this comparison.
     train = raw[raw.split.eq("train")]
     rows = []
-    for rule, cell, cutoffs in [("H1", FOLLOW, H1_CANDIDATES), ("H2", FADE, H2_CANDIDATES)]:
-        for cutoff in cutoffs:
-            events = features(train, h1=cutoff if rule == "H1" else H1_RR_MAX,
-                              h2=cutoff if rule == "H2" else H2_RR_MIN)
-            trades = backtest(events[events.regime.eq(cell)])
-            rows.append({"rule": rule, "RR_cutoff": cutoff, "trades": len(trades),
-                         "net_profit": trades.net_profit.sum()})
+    for cutoff in H2_CANDIDATES:
+        events = features(train, h2=cutoff)
+        trades = backtest(events[events.regime.eq(FADE)])
+        rows.append({"rule": "H2", "RR_cutoff": cutoff, "trades": len(trades),
+                     "net_profit": trades.net_profit.sum()})
     return pd.DataFrame(rows)
 
 
@@ -120,7 +118,7 @@ def main():
     events = pd.read_csv(HERE / "events.csv")
     assert events.threshold_points.eq(SHOCK_THRESHOLD).all()
     assert (events.shock_points > SHOCK_THRESHOLD).all()
-    print("January–April threshold comparison (net profit after spread and fees):")
+    print("H2 January–April comparison (net profit after spread and fees; H1 fixed):")
     print(compare_thresholds(events).to_string(index=False))
     print(f"Selected H1: RR < {H1_RR_MAX}; H2: RR >= {H2_RR_MIN}")
     events = features(events)
@@ -162,9 +160,8 @@ def main():
     table[2, 1].set_facecolor("#ffead3")
     neutral = counts.get("Neutral / missing", 0)
     unknown, recovered = counts.get("Unknown RR: skip", 0), counts.get("Recovered: skip", 0)
-    middle = counts.get("Middle RR: skip", 0)
-    axes[0].set_title("2 × 2 extreme regimes · May–June")
-    axes[0].text(0.5, 0.17, f"No trade: {middle} middle RR, {neutral} neutral,\n{unknown} unknown RR, {recovered} recovered.\nCounts precede execution checks.",
+    axes[0].set_title("2 × 2 regimes · May–June")
+    axes[0].text(0.5, 0.17, f"No trade: {neutral} neutral, {unknown} unknown RR,\n{recovered} recovered. Counts precede execution checks.",
                  transform=axes[0].transAxes, ha="center", va="top", fontsize=9)
     for ax, trades, start, title in [(axes[1], test_trades, "2025-04-30", "May–June: cumulative net profit"),
                                      (full_axis, all_trades, "2025-01-09", "January 10–June 30: cumulative net profit")]:
