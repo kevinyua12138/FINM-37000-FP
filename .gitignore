@@ -1,8 +1,4 @@
-data/*
-!data/.gitkeep
+.DS_Store
+__pycache__/
 .venv/
 .env
-__pycache__/
-.ipynb_checkpoints/
-.DS_Store
-data/raw/

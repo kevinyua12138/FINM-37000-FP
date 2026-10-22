@@ -1,42 +1,61 @@
-# FINM 37000: two simple trading strategies
+# Two simple trading strategies
 
-After a 99.5th-percentile price shock, observe the order book for three seconds:
+Only four project files:
 
-1. **Order-book imbalance:** buy when best-bid quantity is larger; sell when best-ask quantity is larger.
-2. **High-refill reversal:** trade against the shock when the refill ratio is at least 0.5.
+| File | Purpose |
+|---|---|
+| `backtest.py` | Both strategies, profit calculations, and graphs |
+| `events.csv` | Prepared market data used by the backtest |
+| `results.png` | Both profit graphs in one image |
+| `README.md` | Instructions and results |
 
-Each strategy trades one ES contract and holds for 30 seconds after entry.
-Results include the observed bid/ask spread and $5 round-trip fees.
-
-| May–June 2025 | Trades | Net profit |
-|---|---:|---:|
-| Order-book imbalance | 579 | **-$12,082.50** |
-| High-refill reversal | 1 | **-$130.00** |
-
-**The refill strategy has only one trade, so there is insufficient evidence to judge it.**
-
-![Profit](simple_backtest/profit_comparison.png)
-
-![Profit over time](simple_backtest/profit_curve.png)
-
-## Code and results
-
-Use the self-contained **[simple_backtest folder](simple_backtest/)**:
+## Run
 
 ```sh
-cd simple_backtest
-python -m pip install -r requirements.txt
+python -m pip install pandas matplotlib
 python backtest.py
 ```
 
-- [One short backtest script](simple_backtest/backtest.py)
-- [Results, rules, assumptions, and shock graph](simple_backtest/README.md)
-- [Profit table](simple_backtest/results.csv)
-- [Individual trades](simple_backtest/trades.csv)
+This prints the profit table and updates `results.png`. No API key or download is needed.
 
-The small prepared data file is included; this run needs no API key or new download.
-The rules use the existing team’s shock detector and refill measure. The latter
-rarely records high refill because it tracks quantity at the old pre-shock price.
+## Trading rules
 
-The earlier project work and raw-data preparation remain available.
-[Original proposal, team information, and extended analysis](docs/extended_project.md).
+Start after a 10-second price move exceeds the previous five sessions’ 99.5th
+percentile. Observe the book for three seconds, then enter after 100 ms.
+
+1. **Order-book imbalance:** buy when best-bid quantity exceeds best-ask quantity;
+   sell when ask quantity is larger. Equal quantities mean no trade.
+2. **High-refill reversal:** trade against the initial price move when the
+   three-second refill ratio is at least 0.5. Otherwise, do not trade.
+
+Each strategy trades one ES contract, holds for 30 seconds after actual entry,
+and permits only one open position. Buy at the observed ask, sell at the bid,
+and subtract $5 per round trip. Additional slippage is assumed to be zero.
+
+## May–June 2025 results
+
+| Strategy | Trades | Profit before fees, after spread | Fees | Net profit |
+|---|---:|---:|---:|---:|
+| Order-book imbalance | 579 | -$9,187.50 | $2,895.00 | **-$12,082.50** |
+| High-refill reversal | 1 | -$125.00 | $5.00 | **-$130.00** |
+
+![Profit graphs](results.png)
+
+**One high-refill trade is insufficient to judge that strategy.** The existing
+refill definition measures quantity at the old pre-shock price; it is zero in
+604 of 605 events because price rarely returns there within three seconds.
+
+## Data
+
+`events.csv` contains 605 prepared events from Databento ES.v.0 MBP-1 quotes,
+covering 41 full regular sessions. Seven lack valid execution windows and are
+skipped. Shock detection uses a 120-second cooldown. `book_imbalance` is
+`(bid quantity - ask quantity) / (bid quantity + ask quantity)` at the end of
+the three-second observation. `direction` is +1 for an upward shock, -1 for down.
+
+This script reproduces trading results from prepared events, not from raw quotes.
+The original data preparation, shock illustration, tests, and detailed analysis
+are preserved in [the previous version](https://github.com/kevinyua12138/FINM-37000-FP/tree/0f95fc222aeceb2eae059e0e16135ef1f3881bbc).
+The prepared data and trading rules are unchanged; every trade was checked
+against that version. These are historical simulated results, and May–June
+had already been examined before this two-strategy comparison was requested.

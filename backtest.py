@@ -54,46 +54,39 @@ def main():
     assert (events.exit_time >= events.entry_time + pd.Timedelta(seconds=30)).all()
     strategies = ["Order-book imbalance", "High-refill reversal"]
     results = [backtest(events, name) for name in strategies]
-    trades = pd.concat(results, ignore_index=True)
     summary = pd.DataFrame([
         {"strategy": name, "trades": len(t), "gross_profit": t.gross_profit.sum(),
          "fees": t.fees.sum(), "net_profit": t.net_profit.sum(),
          "win_rate_pct": (t.net_profit > 0).mean() * 100}
         for name, t in zip(strategies, results)
     ])
-    trades.to_csv(HERE / "trades.csv", index=False)
-    summary.to_csv(HERE / "results.csv", index=False)
     print(summary.round(2).to_string(index=False))
 
+    # Two graphs in one image; the profit table is printed above.
     plt.style.use("seaborn-v0_8-whitegrid")
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5))
     colors = ["#356aa0", "#d57936"]
-    fig, ax = plt.subplots(figsize=(10, 5))
     days = pd.date_range("2025-04-30", "2025-06-30", tz="UTC")
     for name, t, color in zip(strategies, results, colors):
         daily = t.groupby(t.exit_time.dt.normalize()).net_profit.sum()
         equity = daily.reindex(days, fill_value=0).cumsum()
-        ax.plot(days, equity, label=f"{name} (n={len(t)})", color=color, lw=2)
-    ax.axhline(0, color="gray", lw=0.8)
-    ax.yaxis.set_major_formatter(StrMethodFormatter("${x:,.0f}"))
-    ax.set(title="Cumulative net profit · May–June 2025", ylabel="Net profit ($)")
-    ax.legend()
-    fig.text(0.5, 0.01, "One ES contract · 30-second hold · spread + $5 fees per trade\n"
-             "High-refill reversal has only one trade; insufficient evidence.", ha="center", fontsize=9)
-    fig.tight_layout(rect=(0, 0.08, 1, 1))
-    fig.savefig(HERE / "profit_curve.png", dpi=160)
-    plt.close(fig)
-
-    fig, ax = plt.subplots(figsize=(8, 5))
-    bars = ax.bar(strategies, summary.net_profit, color=colors, width=0.5)
+        axes[0].plot(days, equity, label=f"{name} (n={len(t)})", color=color, lw=2)
+    axes[0].set_title("Cumulative net profit")
+    axes[0].legend(fontsize=9)
+    axes[0].tick_params(axis="x", rotation=25)
+    bars = axes[1].bar(["Book imbalance", "High-refill reversal"], summary.net_profit, color=colors)
     labels = [f"${p:,.2f}\nn={n}" for p, n in zip(summary.net_profit, summary.trades)]
-    ax.bar_label(bars, labels=labels, padding=8)
-    ax.axhline(0, color="gray", lw=0.8)
-    ax.yaxis.set_major_formatter(StrMethodFormatter("${x:,.0f}"))
-    ax.margins(y=0.25)
-    ax.set(title="Total net profit · May–June 2025", ylabel="Net profit ($)")
-    fig.text(0.5, 0.01, "Observed bid/ask + $5 fees · High-refill result: only one trade.", ha="center", fontsize=9)
-    fig.tight_layout(rect=(0, 0.04, 1, 1))
-    fig.savefig(HERE / "profit_comparison.png", dpi=160)
+    axes[1].bar_label(bars, labels=labels, padding=6)
+    axes[1].margins(y=0.25)
+    axes[1].set_title("Total net profit")
+    for ax in axes:
+        ax.axhline(0, color="gray", lw=0.8)
+        ax.yaxis.set_major_formatter(StrMethodFormatter("${x:,.0f}"))
+    fig.suptitle("Two trading strategies · May–June 2025")
+    fig.text(0.5, 0.01, "One ES contract · 30-second hold · observed spread + $5 fees\n"
+             "High-refill reversal: only one trade, insufficient evidence.", ha="center", fontsize=9)
+    fig.tight_layout(rect=(0, 0.09, 1, 0.95))
+    fig.savefig(HERE / "results.png", dpi=160)
     plt.close(fig)
 
 
