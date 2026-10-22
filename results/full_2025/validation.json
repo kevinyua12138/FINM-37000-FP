@@ -1,0 +1,17 @@
+{
+  "status": "passed",
+  "sessions": 122,
+  "events": 2424,
+  "source_digest_matches": true,
+  "verified": [
+    "All 122 regular sessions present",
+    "Historical thresholds use preceding five sessions",
+    "Entries after three seconds plus latency",
+    "Exits at least 30 seconds after actual entry",
+    "No overlapping positions within each rule",
+    "Independent gross/net P&L reconciliation",
+    "Fees charged once per side",
+    "Published metrics match trade lists"
+  ],
+  "unit_tests": "64 passed, 12 subtests passed"
+}

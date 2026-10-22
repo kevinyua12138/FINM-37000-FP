@@ -1,0 +1,41 @@
+{
+  "data": {
+    "dataset": "GLBX.MDP3",
+    "symbol": "ES.v.0",
+    "stype_in": "continuous",
+    "schema": "mbp-1",
+    "raw_dir": "data/raw",
+    "max_cost_usd": 10.0
+  },
+  "session": {
+    "timezone": "America/Chicago",
+    "download_start": "08:30",
+    "download_end": "15:00"
+  },
+  "shocks": {
+    "schema": "mbp-1",
+    "window_s": 10,
+    "quantile": 0.995,
+    "history_days": 5,
+    "cooldown_s": 120,
+    "output": "data/processed/shocks.csv"
+  },
+  "research": {
+    "train_start": "2025-01-02",
+    "train_end": "2025-04-30",
+    "test_start": "2025-05-01",
+    "test_end": "2025-06-30",
+    "observation_s": 3,
+    "latency_ms": 100,
+    "max_stale_s": 1,
+    "refill_cutoff": 0.5,
+    "ofi_cutoff": 0.0,
+    "horizon_s": 30,
+    "fee_per_side_usd": 2.5,
+    "dollars_per_point": 50,
+    "tick_size": 0.25,
+    "contracts": 1,
+    "model_follow_probability": 0.55,
+    "model_fade_probability": 0.45
+  }
+}

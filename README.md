@@ -25,7 +25,7 @@ FINM 37000 group project. Team: Kevin Yuan (Tech Leader), Yash Jain (Communicati
 - A first look at one day of data: [`notebooks/01_first_look.py`](notebooks/01_first_look.py).
 - Running the download needs a Databento API key (`DATABENTO_API_KEY`) and installing `requirements.txt`. Usage: `python src/data/download.py 2025-03-03` (add `--dry-run` to only print the cost).
 
-Exact thresholds and feature definitions are still open at the moment, we will work as a team, following the Design Lead to formalize these.
+The original proposal is preserved above. The reproducible implementation now fixes thresholds, feature formulas, execution timing, and sample splits in [the research specification](docs/research_spec.md). These conventions are explicit for team review.
 
 ## Meeting notes
 
@@ -63,3 +63,105 @@ dates. CME scheduled rolls and Databento volume-based transitions are separate.
 snapshot columns. Use `levels=1` for mbp-1 and `levels=10` for mbp-10; unavailable
 depth features remain missing. See [formulas and usage](docs/book_features.md).
 Run `python3 -m unittest discover -s tests -v` to verify the features and calendar.
+
+
+## Completed backtest: January–June 2025
+
+The run processed **788,357,250 quote records across 122 full regular sessions**,
+with 2,428 detected shocks and 2,424 usable feature windows. All 64 tests pass,
+and an independent audit reconciles timestamps, historical thresholds, trade
+P&L, fees, overlaps and reported metrics. The quoted full-period download cost
+was $0; private raw files total 15.8 GB and are not committed.
+
+**The existing refill proxy does not provide enough high-refill cases to test
+that hypothesis:** RR is zero in 604 of 605 held-out events. Only one test event
+has RR >= 0.5. The four high-refill training events all fall on April 4. The
+fixed pre-shock price definition makes refill mechanically dependent on price
+returning to that old level, so it is nearly always zero after a large shock.
+
+May–June results, one contract, observed bid/ask and $2.50 fee per side:
+
+| Rule | Trades | Net P&L | Interpretation |
+|---|---:|---:|---|
+| Original refill + flow | 281 | -$5,367.50 | Loss after costs; mean -$19.10/trade |
+| High-refill reversal only | 1 | -$130.00 | Insufficient observations for inference |
+| Refill + book imbalance | 299 | -$6,045.00 | Loss after costs |
+| Logistic extension | 47 | -$4,197.50 | Test AUC 0.485 |
+
+The original rule's mean net/trade 95% day-clustered interval is
+[-$39.26, $1.05]. Its gross P&L already loses $3,962.50 after crossing the spread,
+before fees. Adding one tick of slippage per side lowers net P&L to -$12,392.50.
+A revised refill measure needs a new independent holdout; these results are not
+used to pick or tune a replacement rule.
+
+![Detected price shocks, January 10](results/full_2025/shocks_2025-01-10.png)
+
+![May–June rule comparison](results/full_2025/simple_rules.png)
+
+[Full findings and limitations](results/full_2025/README.md) ·
+[Validation audit](results/full_2025/validation.json) ·
+[Refill sample counts](results/full_2025/refill_counts.csv)
+
+## Reproducible project implementation
+
+Use branch `codex/complete-backtest-results`. The implementation reuses the
+existing calendar, snapshot features and labels, plus the team's
+`issue-5-shock-detector` and `issue-9-replenishment` work. The new code uses plain
+functions and processes one day at a time; there is no separate backtesting
+framework or parameter-search system.
+
+```sh
+python -m pip install -r requirements.txt
+python -m pytest -q
+python download_project.py --dry-run
+python download_project.py --budget 0
+python run_backtest.py --output results/full_2025
+```
+
+Provide `DATABENTO_API_KEY` or the existing `~/.databento_api_key` file locally.
+The project downloader checks the total cost of the entire interval before
+fetching data. Its default budget is zero. Existing full files are reused;
+partial files are retried. Raw quotes and Parquet caches are ignored by Git.
+
+The main run requires all regular sessions from January through June 2025.
+January–April develops the strategy; May–June evaluates the frozen rule. The
+first five regular sessions are used only for rolling-threshold history.
+Holidays and half-days are excluded under the existing calendar convention.
+
+| Issues | Implementation |
+|---|---|
+| #2 | Existing downloader plus total-budget, parallel daily download wrapper |
+| #3 | `src/data/clean.py`: quote validation, stale-data barriers, as-of grid, Parquet caches |
+| #4 | Existing 2025 calendar, plus observed contract-transition flags |
+| #5 | Team detector integrated, with contract/gap barriers and explicit tick-unit exports |
+| #6 | Existing label helper corrected to measure horizons from actual entry quote |
+| #7 | Existing snapshot imbalance and microprice features |
+| #8–#9 | Trade/quote flow and team's refill proxy, tested on hand-calculated examples |
+| #10–#11 | Four-regime event study, development paths, day-clustered inference and OLS |
+| #12–#14 | Bid/ask executions, fees, trade lists, held-out test and sensitivity table |
+| #15 | Training-only logistic fit, held-out AUC/calibration and model backtest |
+| #16 | Optional tested mbp-10 functions; real depth evaluation requires depth data |
+| #17 | Generated results report, figures, assumptions and limitations |
+| #24 | Proposed owner/timeline/figure plan in `MeetingNotes/Meeting3.md` |
+
+See [the complete results report](results/full_2025/README.md),
+[trade-level results](results/full_2025/trades.csv),
+[robustness comparisons](results/full_2025/robustness.csv), and
+[the frozen research specification](docs/research_spec.md).
+
+The refill measure is a best-quote proxy and partly measures price recovery.
+It does not observe hidden liquidity. Quote-based fills with zero added
+slippage are optimistic; the stress table includes one tick per side. Fees are
+an explicit illustrative assumption, not a brokerage quote. The optional
+mbp-10 market evaluation is not claimed complete without real depth data.
+
+
+### Simple refill hypotheses
+
+The results compare high-refill-only reversal, refill plus displayed book
+imbalance, and the existing refill-plus-flow rule. High refill means RR >= 0.5;
+the price-shock threshold remains the historical 99.5th percentile. See
+`results/full_2025/simple_rules.csv` and `results/full_2025/simple_rules.png`.
+The three seconds are the observation window; the primary holding period is
+30 seconds after entry. To plot price shocks for a completed session, run
+`python plot_shocks.py --date 2025-01-10`.

@@ -189,4 +189,3 @@ def test_full_report_outputs_on_small_fixture(tmp_path):
     assert result.net_pnl_usd.tolist()==[32.5,32.5]
     for name in ['events.csv','trades.csv','robustness.csv','regression.csv','equity.png','event_paths.png']:
         assert (tmp_path/name).stat().st_size>0
-
