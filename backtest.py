@@ -11,7 +11,7 @@ from matplotlib.ticker import StrMethodFormatter
 HERE = Path(__file__).resolve().parent
 SHOCK_THRESHOLD = 3.5  # 99th percentile from Jan 2, 3, 6, 7, 8; fixed thereafter.
 REFILL_CUTOFF = 0.5
-FLOW_CUTOFF = 0.05  # More than 5% net quote-flow pressure; unchanged this rerun.
+FLOW_CUTOFF = 0.05  # More than 5% net quote-flow pressure.
 POINT_VALUE = 50.0  # One ES contract.
 ROUND_TRIP_FEE = 5.0
 FOLLOW, FADE = "Slow / same", "Fast / reversing"
@@ -26,6 +26,27 @@ def regime(refill, flow):
     return f"{speed} / {pressure}"
 
 
+def features(events):
+    events = events.copy()
+    for column in ["shock_time", "entry_time", "exit_time"]:
+        events[column] = pd.to_datetime(events[column], utc=True)
+    # Freeze the consumed-side best price at t0; never substitute another price's size.
+    movement = events.direction * (events.best_price_after - events.anchor_price)
+    events["depth_at_anchor_after"] = np.select(
+        [movement.eq(0), movement.gt(0)], [events.best_depth_after, 0.0], default=np.nan)
+    # A better best quote hides the anchor deeper in the book: MBP-1 cannot see it.
+    events["refill_ratio"] = events.depth_at_anchor_after / events.depth_at_shock.where(events.depth_at_shock > 0)
+    events["recovered"] = np.where(events.direction.eq(1),
+        events.observation_min_mid <= events.pre_shock_mid,
+        events.observation_max_mid >= events.pre_shock_mid)
+    events["signed_ofi"] = events.direction * events.ofi_sum / events.ofi_abs_sum.where(events.ofi_abs_sum > 0)
+    events.loc[events.ofi_abs_sum.eq(0), "signed_ofi"] = 0.0
+    events["regime"] = [regime(r, f) for r, f in zip(events.refill_ratio, events.signed_ofi)]
+    events.loc[events.refill_ratio.isna(), "regime"] = "Unknown RR: skip"
+    events.loc[events.recovered, "regime"] = "Recovered: skip"
+    return events
+
+
 def backtest(events):
     trades, last_exit = [], None
     required = ["entry_time", "exit_time", "entry_bid", "entry_ask", "exit_bid",
@@ -35,7 +56,7 @@ def backtest(events):
     assert (valid.entry_time >= valid.shock_time + pd.Timedelta(seconds=3.1)).all()
     assert (valid.exit_time >= valid.entry_time + pd.Timedelta(seconds=30)).all()
     for row in valid.itertuples():
-        if row.regime not in TRADE_SIGN:
+        if row.recovered or pd.isna(row.refill_ratio) or row.regime not in TRADE_SIGN:
             continue
         if last_exit is not None and row.entry_time <= last_exit:
             continue  # One open position for the combined strategy.
@@ -81,19 +102,13 @@ def main():
     events = pd.read_csv(HERE / "events.csv")
     assert events.threshold_points.eq(SHOCK_THRESHOLD).all()
     assert (events.shock_points > SHOCK_THRESHOLD).all()
-    for column in ["shock_time", "entry_time", "exit_time"]:
-        events[column] = pd.to_datetime(events[column], utc=True)
-    # Broader refill: depth at the NEW best price can count as recovery.
-    events["refill_ratio"] = events.depth_after / events.depth_before.where(events.depth_before > 0)
-    events["signed_ofi"] = events.direction * events.ofi_sum / events.ofi_abs_sum.where(events.ofi_abs_sum > 0)
-    events.loc[events.ofi_abs_sum.eq(0), "signed_ofi"] = 0.0
-    events["regime"] = [regime(r, f) for r, f in zip(events.refill_ratio, events.signed_ofi)]
+    events = features(events)
     rows, test_trades, all_trades = [], None, None
     groups = [("H1 follow", FOLLOW), ("H2 fade", FADE)]
     for split, period in [("all", "Jan10-Jun30"), ("train", "Jan10-Apr30"), ("test", "May-Jun")]:
         sample = events if split == "all" else events[events.split.eq(split)]
         print(f"\n{period}: event counts BEFORE execution exclusions")
-        cells = [FOLLOW, "Slow / reversing", "Fast / same", FADE, "Neutral / missing"]
+        cells = [FOLLOW, "Slow / reversing", "Fast / same", FADE, "Neutral / missing", "Unknown RR: skip", "Recovered: skip"]
         print(sample.regime.value_counts().reindex(cells, fill_value=0).to_string())
         trades = backtest(sample)
         for name, cell in groups:
@@ -104,7 +119,7 @@ def main():
         if split == "all":
             all_trades = trades
     print("\nProfit in dollars; positive midpoint move supports each hypothesis:")
-    print(pd.DataFrame(rows).round(2).to_string(index=False))
+    print(pd.DataFrame(rows).round(2).to_string(index=False, na_rep="—"))
 
     # One image: regime counts and net profit paths for the original test period.
     plt.style.use("seaborn-v0_8-whitegrid")
@@ -125,8 +140,9 @@ def main():
     table[1, 0].set_facecolor("#dbe9f5")
     table[2, 1].set_facecolor("#ffead3")
     neutral = counts.get("Neutral / missing", 0)
+    unknown, recovered = counts.get("Unknown RR: skip", 0), counts.get("Recovered: skip", 0)
     axes[0].set_title("2 × 2 regimes · May–June")
-    axes[0].text(0.5, 0.10, f"Neutral/missing: {neutral} (no trade)\nEvent counts include invalid execution windows.",
+    axes[0].text(0.5, 0.10, f"No trade: {neutral} neutral, {unknown} unknown RR,\n{recovered} already recovered. Counts precede execution checks.",
                  transform=axes[0].transAxes, ha="center", fontsize=9)
     for ax, trades, start, title in [(axes[1], test_trades, "2025-04-30", "May–June: cumulative net profit"),
                                      (full_axis, all_trades, "2025-01-09", "January 10–June 30: cumulative net profit")]:
@@ -134,8 +150,9 @@ def main():
         for (name, cell), color in zip(groups, ["#356aa0", "#d57936"]):
             t = trades[trades.regime.eq(cell)]
             daily = t.groupby(t.exit_time.dt.normalize()).net_profit.sum()
+            label = f"{name}: ${t.net_profit.sum():,.2f} (n={len(t)})" if len(t) else f"{name}: no trades"
             ax.plot(days, daily.reindex(days, fill_value=0).cumsum(), color=color,
-                    label=f"{name}: ${t.net_profit.sum():,.2f} (n={len(t)})", lw=2)
+                    label=label, lw=2)
         ax.set_title(title)
         ax.yaxis.set_major_formatter(StrMethodFormatter("${x:,.0f}"))
         ax.tick_params(axis="x", rotation=25)
@@ -143,7 +160,7 @@ def main():
     full_axis.axvline(pd.Timestamp("2025-05-01", tz="UTC"), color="gray", ls=":", lw=1)
     fig.suptitle("Sweep or Snap Back? · H1 continuation and H2 reversal")
     fig.text(0.5, 0.01, f"Fixed 99th-percentile cutoff: {SHOCK_THRESHOLD:g} points · 3-second observation · 30-second hold\n"
-             "One ES contract · observed spread + $5 fees · broader depth-recovery proxy", ha="center", fontsize=9)
+             "One ES contract · observed spread + $5 fees · same post-shock price for RR · skip recovery within 3 seconds", ha="center", fontsize=9)
     fig.tight_layout(rect=(0, 0.09, 1, 0.95))
     fig.savefig(HERE / "results.png", dpi=160)
     plt.close(fig)
