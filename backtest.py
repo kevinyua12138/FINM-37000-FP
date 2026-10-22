@@ -10,7 +10,9 @@ from matplotlib.ticker import StrMethodFormatter
 
 HERE = Path(__file__).resolve().parent
 SHOCK_THRESHOLD = 3.5  # 99th percentile from Jan 2, 3, 6, 7, 8; fixed thereafter.
-REFILL_CUTOFF = 0.5
+H1_RR_MAX = 0.25  # RR strictly below this: depleted depth.
+H2_RR_MIN = 1.5   # RR at least this: depth grew by 50%.
+H1_CANDIDATES, H2_CANDIDATES = (0.25, 0.5), (1.0, 1.5)
 FLOW_CUTOFF = 0.05  # More than 5% net quote-flow pressure.
 POINT_VALUE = 50.0  # One ES contract.
 ROUND_TRIP_FEE = 5.0
@@ -18,15 +20,17 @@ FOLLOW, FADE = "Slow / same", "Fast / reversing"
 TRADE_SIGN = {FOLLOW: 1, FADE: -1}  # Relative to the initial price shock.
 
 
-def regime(refill, flow):
+def regime(refill, flow, h1=H1_RR_MAX, h2=H2_RR_MIN):
     if pd.isna(refill) or pd.isna(flow) or abs(flow) <= FLOW_CUTOFF:
         return "Neutral / missing"
-    speed = "Fast" if refill >= REFILL_CUTOFF else "Slow"
+    if h1 <= refill < h2:
+        return "Middle RR: skip"
+    speed = "Fast" if refill >= h2 else "Slow"
     pressure = "same" if flow > FLOW_CUTOFF else "reversing"
     return f"{speed} / {pressure}"
 
 
-def features(events):
+def features(events, h1=H1_RR_MAX, h2=H2_RR_MIN):
     events = events.copy()
     for column in ["shock_time", "entry_time", "exit_time"]:
         events[column] = pd.to_datetime(events[column], utc=True)
@@ -41,7 +45,7 @@ def features(events):
         events.observation_max_mid >= events.pre_shock_mid)
     events["signed_ofi"] = events.direction * events.ofi_sum / events.ofi_abs_sum.where(events.ofi_abs_sum > 0)
     events.loc[events.ofi_abs_sum.eq(0), "signed_ofi"] = 0.0
-    events["regime"] = [regime(r, f) for r, f in zip(events.refill_ratio, events.signed_ofi)]
+    events["regime"] = [regime(r, f, h1, h2) for r, f in zip(events.refill_ratio, events.signed_ofi)]
     events.loc[events.refill_ratio.isna(), "regime"] = "Unknown RR: skip"
     events.loc[events.recovered, "regime"] = "Recovered: skip"
     return events
@@ -98,17 +102,34 @@ def metrics(trades):
             "mean_move_ticks": trades.move_ticks.mean(), "move_ci_low": low, "move_ci_high": high}
 
 
+def compare_thresholds(raw):
+    # Only January–April selects thresholds; May–June never enters this comparison.
+    train = raw[raw.split.eq("train")]
+    rows = []
+    for rule, cell, cutoffs in [("H1", FOLLOW, H1_CANDIDATES), ("H2", FADE, H2_CANDIDATES)]:
+        for cutoff in cutoffs:
+            events = features(train, h1=cutoff if rule == "H1" else H1_RR_MAX,
+                              h2=cutoff if rule == "H2" else H2_RR_MIN)
+            trades = backtest(events[events.regime.eq(cell)])
+            rows.append({"rule": rule, "RR_cutoff": cutoff, "trades": len(trades),
+                         "net_profit": trades.net_profit.sum()})
+    return pd.DataFrame(rows)
+
+
 def main():
     events = pd.read_csv(HERE / "events.csv")
     assert events.threshold_points.eq(SHOCK_THRESHOLD).all()
     assert (events.shock_points > SHOCK_THRESHOLD).all()
+    print("January–April threshold comparison (net profit after spread and fees):")
+    print(compare_thresholds(events).to_string(index=False))
+    print(f"Selected H1: RR < {H1_RR_MAX}; H2: RR >= {H2_RR_MIN}")
     events = features(events)
     rows, test_trades, all_trades = [], None, None
     groups = [("H1 follow", FOLLOW), ("H2 fade", FADE)]
     for split, period in [("all", "Jan10-Jun30"), ("train", "Jan10-Apr30"), ("test", "May-Jun")]:
         sample = events if split == "all" else events[events.split.eq(split)]
         print(f"\n{period}: event counts BEFORE execution exclusions")
-        cells = [FOLLOW, "Slow / reversing", "Fast / same", FADE, "Neutral / missing", "Unknown RR: skip", "Recovered: skip"]
+        cells = [FOLLOW, "Slow / reversing", "Fast / same", FADE, "Middle RR: skip", "Neutral / missing", "Unknown RR: skip", "Recovered: skip"]
         print(sample.regime.value_counts().reindex(cells, fill_value=0).to_string())
         trades = backtest(sample)
         for name, cell in groups:
@@ -132,7 +153,7 @@ def main():
              for row in [[(FOLLOW, "H1: FOLLOW"), ("Slow / reversing", "NO TRADE")],
                          [("Fast / same", "NO TRADE"), (FADE, "H2: FADE")]]]
     axes[0].axis("off")
-    table = axes[0].table(cellText=cells, rowLabels=["Slow\nRR < 0.5", "Fast\nRR >= 0.5"],
+    table = axes[0].table(cellText=cells, rowLabels=[f"Slow\nRR < {H1_RR_MAX:g}", f"Fast\nRR >= {H2_RR_MIN:g}"],
                           colLabels=["Same direction\nOFI > 0.05", "Reversing\nOFI < -0.05"],
                           cellLoc="center", bbox=[0.18, 0.22, 0.82, 0.65])
     table.auto_set_font_size(False)
@@ -141,9 +162,10 @@ def main():
     table[2, 1].set_facecolor("#ffead3")
     neutral = counts.get("Neutral / missing", 0)
     unknown, recovered = counts.get("Unknown RR: skip", 0), counts.get("Recovered: skip", 0)
-    axes[0].set_title("2 × 2 regimes · May–June")
-    axes[0].text(0.5, 0.10, f"No trade: {neutral} neutral, {unknown} unknown RR,\n{recovered} already recovered. Counts precede execution checks.",
-                 transform=axes[0].transAxes, ha="center", fontsize=9)
+    middle = counts.get("Middle RR: skip", 0)
+    axes[0].set_title("2 × 2 extreme regimes · May–June")
+    axes[0].text(0.5, 0.17, f"No trade: {middle} middle RR, {neutral} neutral,\n{unknown} unknown RR, {recovered} recovered.\nCounts precede execution checks.",
+                 transform=axes[0].transAxes, ha="center", va="top", fontsize=9)
     for ax, trades, start, title in [(axes[1], test_trades, "2025-04-30", "May–June: cumulative net profit"),
                                      (full_axis, all_trades, "2025-01-09", "January 10–June 30: cumulative net profit")]:
         days = pd.date_range(start, "2025-06-30", tz="UTC")
