@@ -200,16 +200,15 @@ def write_report(output, summary, model, coverage, events):
     simple = pd.read_csv(output/'simple_rules.csv')
     lines += ['## Your simple rules: held-out comparison', '',
               'All rules use 99.5th-percentile 10-second shocks, observe the book for three seconds, '
-              'enter after 100 ms, and hold for 30 seconds. Large means at least the training-sample '
-              '95th percentile. Opposing displayed depth means ask quantity after an up-shock or '
-              'bid quantity after a down-shock. These are displayed quantities, not individual order identities.', '',
+              'enter after 100 ms, and hold for 30 seconds. High refill means RR >= 0.5. '
+              'The comparison tests high refill alone and in combination with book imbalance or order flow.', '',
               '| Rule | Trades | Net P&L | Mean net/trade | 95% clustered interval |',
               '|---|---:|---:|---:|---|']
     for x in simple[simple.split.eq('test')].to_dict('records'):
         lines.append(f"| {x['rule']} | {x['trades']} | ${number(x['net_pnl_usd'])} | "
                      f"${number(x['mean_net_usd'])} | [${number(x['net_lo'])}, ${number(x['net_hi'])}] |")
     lines += ['', '![Simple rule comparison](simple_rules.png)', '',
-              'See `simple_rules.csv`, `simple_rule_trades.csv` and `big_order_cutoffs.json`. '
+              'See `simple_rules.csv` and `simple_rule_trades.csv`. '
               'These parallel hypotheses were specified before the held-out evaluation; '
               'the best realized result is not a newly validated strategy.', '']
     lines += [
@@ -237,26 +236,17 @@ def write_report(output, summary, model, coverage, events):
 
 
 def simple_rule_comparison(train, test, coverage, cfg, output):
-    """User-requested hypotheses; size thresholds learned on development events only."""
+    """Compare the three refill-based hypotheses without tuning on test returns."""
     r = cfg['research']
-    quantile = r['big_order_percentile']
-    cutoffs = {c: float(train[c].quantile(quantile)) for c in ['max_eaten_depth','max_trade_size']}
-    (output/'big_order_cutoffs.json').write_text(json.dumps(dict(percentile=quantile, **cutoffs), indent=2))
     rows, trade_lists = [], []
     for split, ev in [('train',train), ('test',test)]:
         days = coverage.loc[coverage.date.le(r['train_end']) if split=='train' else coverage.date.ge(r['test_start']), 'date']
         fast = ev.refill_ratio.ge(r['refill_cutoff'])
         slow = ev.refill_ratio.lt(r['refill_cutoff'])
-        big_book = ev.max_eaten_depth.ge(cutoffs['max_eaten_depth']) & ev.max_eaten_depth.gt(0)
-        big_trade = ev.max_trade_size.ge(cutoffs['max_trade_size']) & ev.max_trade_size.gt(0)
         rules = {
             'existing_refill_and_flow': ev.signal,
             'high_refill_fade': np.where(fast,-1,0),
             'refill_and_book_imbalance': np.select([slow & ev.I_1.gt(0),fast & ev.I_1.lt(0)],[1,-1],default=0),
-            'large_opposing_book_fade': np.where(big_book,-1,0),
-            'high_refill_and_large_book_fade': np.where(fast & big_book,-1,0),
-            'large_trade_fade': np.where(big_trade,-1,0),
-            'high_refill_and_large_trade_fade': np.where(fast & big_trade,-1,0),
         }
         for rule, signal in rules.items():
             trades = simulate(ev,cfg,signal=signal)

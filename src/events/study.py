@@ -41,15 +41,6 @@ def enrich_events(q, events, cfg):
         event.update(refill_ratio=features.refill_ratio, half_life_s=features.half_life_s)
         lo, hi = q.index.searchsorted(t0, side='right'), q.index.searchsorted(t0 + obs, side='right')
         event.update(window_flow(updates.iloc[lo:hi], direction))
-        book_window = q.iloc[start:end + 1]
-        event['max_bid_depth'] = book_window.bid_sz_00.max()
-        event['max_ask_depth'] = book_window.ask_sz_00.max()
-        event['max_eaten_depth'] = event['max_ask_depth'] if direction > 0 else event['max_bid_depth']
-        trades = q.iloc[lo:hi]
-        event['max_trade_size'] = (trades.loc[trades.action.eq('T'), 'size'].max()
-                                   if {'action', 'size'}.issubset(trades.columns) else np.nan)
-        if {'action', 'size'}.issubset(trades.columns) and not trades.action.eq('T').any():
-            event['max_trade_size'] = 0.0
         snapshot = book_features(q.iloc[[end]], levels=1).iloc[0]
         event.update(I_1=direction * snapshot.I_1, G=direction * snapshot.G)
         event['size_ticks'] = event['size'] / r['tick_size']

@@ -178,7 +178,6 @@ def test_depth_does_not_fabricate_unseen_levels():
 def test_full_report_outputs_on_small_fixture(tmp_path):
     from analysis import evaluate
     a=trading_events()
-    a['max_eaten_depth']=100.;a['max_trade_size']=10.
     a['refill_ratio']=0.; a['ofi']=.2; a['I_1']=.1; a['G']=.0125; a['size_ticks']=8.
     a['is_macro_day']=False;a['is_roll_day']=False;a['is_actual_roll_day']=False
     for h in [5,30,120]: a[f'y_{h}s']=.001
@@ -191,13 +190,3 @@ def test_full_report_outputs_on_small_fixture(tmp_path):
     for name in ['events.csv','trades.csv','robustness.csv','regression.csv','equity.png','event_paths.png']:
         assert (tmp_path/name).stat().st_size>0
 
-
-
-def test_big_order_features_only_use_three_second_window():
-    q=clean_quotes(quotes(np.arange(-11,130,.5)))
-    q.loc[T+pd.Timedelta('2s'),'ask_sz_00']=200
-    q.loc[T+pd.Timedelta('4s'),'ask_sz_00']=9999
-    q.loc[T+pd.Timedelta('1s'),['action','size']]=['T',50]
-    q.loc[T+pd.Timedelta('5s'),['action','size']]=['T',9999]
-    out=enrich_events(q,event(),CFG).iloc[0]
-    assert out.max_eaten_depth==200 and out.max_trade_size==50
