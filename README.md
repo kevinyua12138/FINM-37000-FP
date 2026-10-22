@@ -2,13 +2,13 @@
 
 ![When the fixed-threshold price shocks happen](shocks.png)
 
-The triangles mark **19 shocks on January 10**. A shock is a 10-second midpoint
-move **greater than 4 points (16 ticks)**. “99.5%” means the **99.5th percentile**
-of historical move sizes, not a 99.5% return.
+The triangles mark **38 shocks on January 10**. A shock is a 10-second midpoint
+move **greater than 3.5 points (14 ticks)**. “99%” means the **99th percentile**
+of historical move sizes, not a 99% return.
 
 ## Fixed threshold and timing
 
-The 4-point cutoff is calculated **once**, using January 2, 3, 6, 7, and 8,
+The 3.5-point cutoff is calculated **once**, using January 2, 3, 6, 7, and 8,
 and stays fixed for the entire January 10–June 30 backtest. These five days are
 calibration data only. A **session** means one trading day, 08:30–15:00 Chicago
 time. **Three seconds** means the observation window after a shock; it does
@@ -18,29 +18,24 @@ Check for shocks each second, with a 120-second cooldown. After a shock at `t0`,
 observe through `t0 + 3 seconds`, enter at the first eligible quote at/after
 `t0 + 3.1 seconds`, and exit 30 seconds after the actual entry.
 
-## A more generous refill ratio, with examples
+## Refill ratio: one Mickey Mouse example
 
 **RR = current best-quote quantity after observation / best-quote quantity before the shock.**
 
-- For an **up-shock**, compare ask quantity at `t0 + 3s` with ask quantity at `t0 − 10s`.
-- For a **down-shock**, compare bid quantities at those times.
-- The quote prices **may differ**. RR < 0.5 is slow; RR >= 0.5 is fast.
+Imagine an upward price shock:
 
-| Quantity before | Quantity after | RR | Classification |
-|---:|---:|---:|---|
-| 100 contracts | 20 contracts | 0.20 | Slow: 20% of the original depth is displayed |
-| 100 contracts | 60 contracts | 0.60 | Fast: 60% is displayed |
-| 100 contracts | 140 contracts | 1.40 | Fast: displayed depth exceeds its original size |
+1. **Before the shock** (`t0 − 10s`): the best ask is 6000 with **100 contracts**.
+2. **After observing for three seconds** (`t0 + 3s`): the best ask is now 6004 with **60 contracts**.
+3. **RR = 60 / 100 = 0.60 = 60%.** Since RR >= 0.5, classify this as **fast refill**.
 
-For example, an up-shock can move the ask from 6000 to 6004. If ask quantity
-changes from 100 to 60, the **new RR is 0.60**. The old measure would generally
-record zero because it required quantity at the old 6000 price. We relaxed
-that price requirement while keeping the 0.5 cutoff.
+If order flow is also reversing (OFI < −0.05), this qualifies for **H2: sell**.
+Fast refill by itself is not enough to trigger a trade.
 
-This is a **displayed-depth recovery proxy**. A different price level can already
-have resting orders, so it does not prove that new orders refilled the consumed
-level. The interpretation changes along with the definition; it is not merely
-a lower cutoff for the old measure.
+For an up-shock use ask quantities; for a down-shock use bid quantities.
+RR < 0.5 is slow and RR >= 0.5 is fast. Quote prices may differ. This measures
+**displayed-depth recovery**, not necessarily newly submitted orders: the new
+price level may already have had resting orders. The old fixed-price measure
+would generally be zero in this example because the ask moved away from 6000.
 
 ## Two hypotheses and the 2 × 2 rule
 
@@ -55,10 +50,9 @@ Values from −0.05 through +0.05 are neutral: no trade.
 | **Fast refill: RR >= 0.5** | No trade | **H2: fade** the shock |
 
 H1 buys an up-shock and sells a down-shock. H2 does the opposite.
-For example, an up-shock with RR=0.20 and OFI=+0.12 triggers H1 (buy);
-RR=0.60 and OFI=−0.10 triggers H2 (sell). RR=0.60 with OFI=+0.12 does not trade.
-The 0.5 refill and 0.05 flow cutoffs were fixed before this revised run, without
-searching for the most profitable combination.
+The refill cutoff (0.5), flow cutoff (0.05), execution timing, and costs are
+unchanged from the prior run. Only the shock percentile changes from 99.5 to 99;
+no search for the most profitable percentile was performed.
 
 ## Backtest results
 
@@ -68,12 +62,12 @@ H1 and H2 use mutually exclusive signals.
 
 | Period | Strategy | Trades | Net profit | Mean net/trade | Win rate | Max drawdown |
 |---|---|---:|---:|---:|---:|---:|
-| Jan 10–Jun 30 | H1 continuation | 124 | **$2,092.50** | $16.88 | 50.81% | $1,520.00 |
-| Jan 10–Jun 30 | H2 reversal | 629 | **$-12,670.00** | $-20.14 | 43.56% | $16,505.00 |
-| May–June | H1 continuation | 13 | **$-327.50** | $-25.19 | 38.46% | $647.50 |
-| May–June | H2 reversal | 52 | **$-2,435.00** | $-46.83 | 34.62% | $2,462.50 |
+| Jan 10–Jun 30 | H1 continuation | 172 | **$565.00** | $3.28 | 41.28% | $3,250.00 |
+| Jan 10–Jun 30 | H2 reversal | 861 | **−$10,242.50** | −$11.90 | 44.72% | $10,595.00 |
+| May–June | H1 continuation | 18 | **−$540.00** | −$30.00 | 27.78% | $540.00 |
+| May–June | H2 reversal | 109 | **−$2,082.50** | −$19.11 | 42.20% | $2,607.50 |
 
-January 10–April 30 alone: H1 had 111 trades and **+$2,420** net; H2 had 577 trades and **−$10,235** net. The full-period rows include these development observations. The script also prints gross profit and total fees.
+January 10–April 30 alone: H1 had 154 trades and **$1,105.00** net; H2 had 752 trades and **−$8,160.00** net. The full-period rows include these development observations. The script also prints gross profit and total fees.
 
 ![Regime counts and profit](results.png)
 
@@ -81,14 +75,14 @@ January 10–April 30 alone: H1 had 111 trades and **+$2,420** net; H2 had 577 t
 
 | Period | Hypothesis | Mean favorable move | 95% day-bootstrap interval | Active days |
 |---|---|---:|---:|---:|
-| Jan 10–Jun 30 | H1 continuation | 3.05 ticks | [1.18, 4.86] ticks | 44 |
-| Jan 10–Jun 30 | H2 reversal | 0.05 ticks | [-2.06, 2.15] ticks | 86 |
-| May–June | H1 continuation | -0.50 ticks | [-5.31, 4.13] ticks | 11 |
-| May–June | H2 reversal | -2.23 ticks | [-5.07, 0.17] ticks | 24 |
+| Jan 10–Jun 30 | H1 continuation | 1.87 ticks | [-2.04, 6.10] ticks | 61 |
+| Jan 10–Jun 30 | H2 reversal | 0.65 ticks | [-0.28, 1.62] ticks | 99 |
+| May–June | H1 continuation | -0.89 ticks | [-4.83, 1.70] ticks | 14 |
+| May–June | H2 reversal | -0.06 ticks | [-1.20, 1.25] ticks | 33 |
 
-**H1:** positive over the full period, driven by January–April, but the May–June mean move is negative and its interval includes zero. The continuation hypothesis does not hold up convincingly in the later sample, which has only 13 trades.
+**H1 continuation:** $565.00 net over the full period (172 trades), and −$540.00 in May–June (18 trades). The May–June interval includes zero, so it does not establish a positive mean move in the predicted direction.
 
-**H2:** the broader rule now produces **629 full-period trades and 52 May–June trades**, compared with one May–June trade in the previous version. The new mean-move intervals include zero, and net profits are negative. More observations do not establish profitable reversal. The fixed shock threshold and OFI cutoff also changed, so the versions differ in more than refill alone.
+**H2 reversal:** −$10,242.50 net over the full period (861 trades), and −$2,082.50 in May–June (109 trades). The May–June interval includes zero, so it does not establish a positive mean move in the predicted direction.
 
 ## Metrics and calculations
 
@@ -124,18 +118,18 @@ python -m pip install pandas matplotlib
 python backtest.py
 ```
 
-Validation checked the fixed calibration threshold, all 753 trades, signal selection,
-quote-side executions, timing, costs, and non-overlapping positions. On 686 shared
-shocks, quote features and execution prices match the earlier full-day pipeline.
+Validation independently checked all 1,033 trades, the fixed 99th-percentile
+calibration, signals, execution timing, prices, costs, and non-overlap. The
+features and fills match the prior run on 1,039 shared shocks.
 
 Five files, no subfolders: `backtest.py`, `events.csv`, `README.md`, `results.png`,
 and the requested `shocks.png` illustration. The script recalculates RR and OFI
 from the included quantities and flow sums, prints results, and updates
 `results.png`. The shock illustration is included separately.
 
-The calibration uses five sessions; the backtest covers the remaining **117 full sessions**. There are **2,890 detected shocks**, **2,888 valid feature events** (2,533 January–April; 355 May–June), and **2,860 events with complete execution windows**. Four qualifying H2 events lack valid execution windows, leaving **753 trades** across H1 and H2.
+The calibration uses five sessions; the backtest covers the remaining **117 full sessions**. There are **3,900 detected shocks**, **3,897 valid feature events** (3,329 January–April; 568 May–June), and **3,861 events with complete execution windows**. Of 1,038 qualifying H1/H2 events, 5 lack valid execution windows, leaving **1,033 trades**.
 
-Among the 355 May–June events, the broader RR is fast in 282 cases; the old fixed-price proxy is fast in only two on these same shocks. With the ±0.05 flow criterion, the 2×2 counts are 13 slow/same, 16 slow/reversing, 70 fast/same and 54 fast/reversing, plus 202 neutral events. H2 executes 52 of its 54 qualifying events.
+The May–June 2×2 feature-event counts are 18 slow/same, 32 slow/reversing, 98 fast/same and 111 fast/reversing, plus 309 neutral events. These counts precede execution exclusions.
 
 Data: local Databento GLBX.MDP3 ES.v.0 MBP-1 quotes. Holidays and half-days are
 excluded. Invalid/crossed quotes, contract changes, gaps over one second, and

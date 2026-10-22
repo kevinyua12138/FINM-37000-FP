@@ -9,9 +9,9 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import StrMethodFormatter
 
 HERE = Path(__file__).resolve().parent
-SHOCK_THRESHOLD = 4.0  # Fixed from Jan 2, 3, 6, 7, 8; not recalibrated later.
+SHOCK_THRESHOLD = 3.5  # 99th percentile from Jan 2, 3, 6, 7, 8; fixed thereafter.
 REFILL_CUTOFF = 0.5
-FLOW_CUTOFF = 0.05  # At least 5% net quote-flow pressure; fixed before this rerun.
+FLOW_CUTOFF = 0.05  # More than 5% net quote-flow pressure; unchanged this rerun.
 POINT_VALUE = 50.0  # One ES contract.
 ROUND_TRIP_FEE = 5.0
 FOLLOW, FADE = "Slow / same", "Fast / reversing"
@@ -142,7 +142,7 @@ def main():
         ax.legend(fontsize=9)
     full_axis.axvline(pd.Timestamp("2025-05-01", tz="UTC"), color="gray", ls=":", lw=1)
     fig.suptitle("Sweep or Snap Back? · H1 continuation and H2 reversal")
-    fig.text(0.5, 0.01, "Fixed shock cutoff: 4 points · 3-second observation · 30-second hold\n"
+    fig.text(0.5, 0.01, f"Fixed 99th-percentile cutoff: {SHOCK_THRESHOLD:g} points · 3-second observation · 30-second hold\n"
              "One ES contract · observed spread + $5 fees · broader depth-recovery proxy", ha="center", fontsize=9)
     fig.tight_layout(rect=(0, 0.09, 1, 0.95))
     fig.savefig(HERE / "results.png", dpi=160)
