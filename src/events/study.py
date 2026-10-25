@@ -6,6 +6,8 @@ shocks only ("median" in config.yaml, or a fixed number), so they can be frozen 
     slow refill + strong pressure -> follow   (H1: the move continues)
     fast refill + weak pressure   -> fade     (H2: the move reverses)
     anything else, or a missing feature -> no trade
+Optional neutral band: with pressure_low_cutoff set (e.g. -0.05 next to a pressure cutoff of
+0.05), "weak" means reversing flow below the low cutoff, and shocks in between are no trade.
 
 Usage (from the repo root, after `python src/events/build.py`):
     python src/events/study.py
@@ -58,6 +60,8 @@ def fit_cutoffs(events, cfg):
         "pressure_column": cfg["pressure_column"],
         "pressure_rule": cfg["pressure_cutoff"],
         "pressure_cutoff": resolve_cutoff(events[cfg["pressure_column"]], cfg["pressure_cutoff"]),
+        "pressure_low_cutoff": (None if cfg.get("pressure_low_cutoff") is None
+                                else resolve_cutoff(events[cfg["pressure_column"]], cfg["pressure_low_cutoff"])),
     }
 
 
@@ -68,9 +72,12 @@ def assign_regimes(events, cutoffs):
     known = refill.notna() & pressure.notna()
     slow = refill < cutoffs["refill_cutoff"]
     strong = pressure > cutoffs["pressure_cutoff"]
+    low = cutoffs.get("pressure_low_cutoff")
+    weak = ~strong if low is None else pressure < low
+    sided = known & (strong | weak)  # shocks in a neutral band are in neither column
     out["slow_refill"] = np.where(known, slow, np.nan)
-    out["strong_pressure"] = np.where(known, strong, np.nan)
-    out["regime"] = np.select([known & slow & strong, known & ~slow & ~strong],
+    out["strong_pressure"] = np.where(sided, strong, np.nan)
+    out["regime"] = np.select([sided & slow & strong, sided & ~slow & weak],
                               ["follow", "fade"], default="no trade")
     return out
 

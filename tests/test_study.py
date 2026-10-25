@@ -34,6 +34,17 @@ def test_regimes_follow_the_2x2_rules():
     assert out["slow_refill"].tolist()[:4] == [1.0, 0.0, 1.0, 0.0] and np.isnan(out["slow_refill"].iloc[4])
 
 
+def test_neutral_band_keeps_weak_but_not_reversing_flow_out_of_fade():
+    ev = pd.DataFrame({"date": ["2025-03-03"] * 4, "refill_best": [0.2, 0.9, 0.9, 0.9],
+                       "ofi": [0.4, -0.3, 0.02, -0.02]})
+    band = {**CUTOFFS, "pressure_cutoff": 0.05, "pressure_low_cutoff": -0.05}
+    out = assign_regimes(ev, band)
+    assert out["regime"].tolist() == ["follow", "fade", "no trade", "no trade"]
+    assert out["strong_pressure"].tolist()[:2] == [1.0, 0.0] and out["strong_pressure"].iloc[2:].isna().all()
+    no_band = assign_regimes(ev, {**CUTOFFS, "pressure_cutoff": 0.05})
+    assert no_band["regime"].tolist() == ["follow", "fade", "fade", "fade"]
+
+
 def test_median_cutoffs_come_from_the_given_events():
     cfg = {"refill_column": "refill_best", "refill_cutoff": "median",
            "pressure_column": "ofi", "pressure_cutoff": 0.25}

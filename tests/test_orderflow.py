@@ -100,3 +100,15 @@ def test_events_not_modified():
     ev = events()
     orderflow_features(quotes(BOOK_ROWS), ev)
     assert list(ev.columns) == ["t0", "direction"]
+
+
+def test_unsigned_sizes_like_databento():
+    # Databento delivers sizes as uint32; more selling than buying must not wrap around
+    book = (5000.00, 10, 5000.25, 10)
+    rows = [(-1.0, *book, "A", "N", 0), (0.5, *book, "T", "B", 2), (1.0, *book, "T", "A", 6),
+            (2.0, 5000.00, 4, 5000.25, 10, "C", "N", 0)]
+    q = quotes(rows).astype({"bid_sz_00": "uint32", "ask_sz_00": "uint32", "size": "uint32"})
+    for direction in (1, -1):
+        out = orderflow_features(q, events(direction)).iloc[0]
+        assert np.isclose(out["ti"], direction * (2 - 6) / 8) and out["trade_volume"] == 8.0
+        assert out["ofi_contracts"] == direction * -6.0  # bid size 10 -> 4

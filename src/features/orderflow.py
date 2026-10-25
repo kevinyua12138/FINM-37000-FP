@@ -43,7 +43,8 @@ def _trades(quotes):
     if not TRADE_COLUMNS <= set(quotes.columns):
         return None
     trades = quotes.loc[quotes["action"] == "T", ["side", "size"]]
-    return trades.assign(size=pd.to_numeric(trades["size"], errors="coerce").fillna(0.0))
+    # Databento stores sizes as unsigned integers, so buy - sell would wrap around below zero
+    return trades.assign(size=pd.to_numeric(trades["size"], errors="coerce").astype(float).fillna(0.0))
 
 
 def orderflow_features(quotes, events, obs=OBSERVATION):
@@ -58,7 +59,7 @@ def orderflow_features(quotes, events, obs=OBSERVATION):
     trades = _trades(quotes)
     n = len(out)
     ofi_c, ofi_n, ti, volume = (np.full(n, np.nan) for _ in range(4))
-    for k, (t0, direction) in enumerate(zip(out["t0"], out["direction"])):
+    for k, (t0, direction) in enumerate(zip(out["t0"], out["direction"].astype(float))):
         i = book.index.searchsorted(t0, side="right") - 1
         if i < 0:
             continue

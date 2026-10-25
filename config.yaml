@@ -21,19 +21,20 @@ shocks:
 
 study:
   events: data/processed/events.csv        # written by src/events/build.py
-  in_sample: ["2025-01-01", "2025-04-30"]  # rules and cutoffs are fit here only
-  out_of_sample: ["2025-05-01", "2025-06-30"]  # used once, after the rules are frozen (#13)
+  in_sample: ["2025-01-01", "2025-06-30"]
+  out_of_sample: ["2025-07-01", "2025-09-30"]
   refill_column: refill_best   # best-quote refill (Meeting 1); refill_ratio = depth left at old price X
   pressure_column: ofi         # signed, normalized OFI in [-1, 1]; ti = trade imbalance
-  refill_cutoff: median        # slow refill = below this; a number fixes it instead
-  pressure_cutoff: median      # strong pressure = above this; a number fixes it instead
+  refill_cutoff: 0.5
+  pressure_cutoff: 0.05
+  pressure_low_cutoff: -0.05
   main_horizon_s: 30
   regression_features: [refill_best, ofi, ti]
   stress_window: ["2025-04-03", "2025-04-10"]  # tariff selloff and rebound, flagged for #14
 
 backtest:
   horizon_s: 30
-  fee_per_side_usd: 2.00       # ASSUMPTION per contract per side (exchange + clearing + broker); set it
+  fee_per_side_usd: 2.50
   point_value_usd: 50.0        # ES: $50 per index point, so one 0.25 tick = $12.50
 
 logit:
