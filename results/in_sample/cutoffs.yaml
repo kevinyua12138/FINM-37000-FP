@@ -1,0 +1,7 @@
+refill_column: refill_best
+refill_rule: 0.5
+refill_cutoff: 0.5
+pressure_column: ofi
+pressure_rule: 0.05
+pressure_cutoff: 0.05
+pressure_low_cutoff: -0.05

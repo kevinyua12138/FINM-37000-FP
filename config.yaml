@@ -18,3 +18,32 @@ shocks:
   history_days: 5           # ...over the previous 5 trading days only
   cooldown_s: 120           # ignore new shocks for 120 s after one
   output: data/processed/shocks.csv
+
+study:
+  events: data/processed/events.csv        # written by src/events/build.py
+  in_sample: ["2025-01-01", "2025-06-30"]
+  out_of_sample: ["2025-07-01", "2025-09-30"]
+  refill_column: refill_best   # best-quote refill (Meeting 1); refill_ratio = depth left at old price X
+  pressure_column: ofi         # signed, normalized OFI in [-1, 1]; ti = trade imbalance
+  refill_cutoff: 0.5
+  pressure_cutoff: 0.05
+  pressure_low_cutoff: -0.05
+  main_horizon_s: 30
+  regression_features: [refill_best, ofi, ti]
+  stress_window: ["2025-04-03", "2025-04-10"]  # tariff selloff and rebound, flagged for #14
+
+backtest:
+  horizon_s: 30
+  fee_per_side_usd: 2.50
+  point_value_usd: 50.0        # ES: $50 per index point, so one 0.25 tick = $12.50
+
+logit:
+  features: [refill_best, ofi, ti, imb_1, size_ticks]   # standardized with in-sample mean and std
+  l2: 1.0                      # ridge penalty, not applied to the intercept
+  margin: 0.05                 # follow if p > 0.55, fade if p < 0.45, else no trade
+
+depth:
+  schema: mbp-10
+  days: ["2025-01-14", "2025-01-29", "2025-02-11", "2025-03-19", "2025-03-25",
+         "2025-04-03", "2025-04-04", "2025-04-09", "2025-04-22", "2025-04-29"]  # 2 FOMC, 3 tariff-week, 5 other
+  output: data/processed/events_depth.csv
