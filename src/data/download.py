@@ -1,5 +1,6 @@
 import argparse
 import csv
+import os
 import sys
 import time
 from datetime import date, datetime
@@ -19,10 +20,12 @@ RETRIES = 4  # after a failed download, wait 5, 10, 20, then 40 s before trying 
 
 
 def get_client():
-    try:
-        from finm37000 import get_databento_api_key, temp_env
-    except ImportError:
-        return db.Historical()  # falls back to the DATABENTO_API_KEY env variable
+    # The README says to set DATABENTO_API_KEY. Since src/ is on sys.path, finm37000 always
+    # imports, so only fall back to the ~/.databento_api_key file when the variable is unset.
+    if os.environ.get("DATABENTO_API_KEY"):
+        return db.Historical()
+
+    from finm37000 import get_databento_api_key, temp_env
 
     with temp_env(DATABENTO_API_KEY=get_databento_api_key()):
         return db.Historical()
