@@ -2,6 +2,19 @@
 
 FINM 37000 group project. Team: Kevin Yuan (Tech Leader), Yash Jain (Communications Leader), Simon Jung (Design Leader).
 
+## Hypotheses and what the backtests showed
+
+A shock is a 10-second move in the ES mid price above the 99.5th percentile of 10-second moves over the previous five trading days, with a 120-second cooldown. We then watch the book for 3 seconds:
+
+- **Refill** = size at the best quote on the side that got hit, divided by that size before the shock (#27). Slow if below 0.5.
+- **Pressure** = order-flow imbalance (OFI) over those 3 seconds, signed so positive means pushing in the shock's direction, scaled to [-1, 1]. Strong above 0.05, reversing below -0.05, no trade in between.
+
+**H1:** slow refill + strong pressure → the move continues over the next 30 seconds, so we follow it.
+**H2:** fast refill + reversing pressure → the move reverses over the next 30 seconds, so we fade it.
+**H3:** following H1 and fading H2 (enter 3.1 s after the shock, cross the spread, hold 30 s, $2.50 a side in fees) makes money out of sample.
+
+In-sample (January 2 to June 30, 2025, PR #28), neither H1 nor H2 showed up. Follow shocks actually drifted back, -0.60 bp over 30 s (t = -0.53), and fade shocks reversed only 0.24 bp (t = -0.76), where positive means the move kept going. The backtest lost $16.45 per trade over 652 trades (t = -2.74): the move it caught before costs was worth $3.11 a trade, against about $19.55 in spread and fees. Simon's fixed-threshold version agrees: H1 lost $9,132.50 over 934 trades, and H2's $847.50 came from only 8 trades. Whatever the book tells us after a shock is much smaller than the cost of trading on it.
+
 ## Initial topic plan
 
 **Question:** When the E-mini S&P 500 futures contract (ES, traded on CME Globex) makes a sudden large move, can the order book in the next few seconds tell us whether the move will continue or reverse?
