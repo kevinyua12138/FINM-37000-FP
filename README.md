@@ -63,3 +63,25 @@ dates. CME scheduled rolls and Databento volume-based transitions are separate.
 snapshot columns. Use `levels=1` for mbp-1 and `levels=10` for mbp-10; unavailable
 depth features remain missing. See [formulas and usage](docs/book_features.md).
 Run `python3 -m unittest discover -s tests -v` to verify the features and calendar.
+
+## Shock detector (issue #5)
+
+A shock is a 10-second move in the ES mid price larger than the 99.5th percentile of
+10-second moves over the previous 5 trading days, with a 120-second cooldown after each
+shock. Settings are under `shocks:` in [`config.yaml`](config.yaml).
+
+Finding shocks only needs one quote per second, so the detector reads Databento's small
+`bbo-1s` schema instead of full `mbp-1` days:
+
+```sh
+python src/data/download.py 2025-01-02 --end 2025-06-30 --schema bbo-1s --dry-run  # cost check
+python src/data/download.py 2025-01-02 --end 2025-06-30 --schema bbo-1s
+python src/events/shocks.py   # writes data/processed/shocks.csv
+```
+
+`--end` downloads every trading day in the range (weekends and holidays from the #4
+calendar are skipped). The first 5 days only build the threshold, so download at least 6.
+Each row of `shocks.csv` is one shock: `t0`, `date`, `direction` (+1 up, -1 down), `size`
+and `threshold` (index points), and `instrument_id`. The mid at second t is the last quote
+at or before t, so a shock at `t0` uses no later data. `python src/events/shocks.py
+--schema mbp-1` runs the same detector on mbp-1 files.
