@@ -1,9 +1,0 @@
-databento
-pandas
-numpy
-pyarrow
-pyyaml
-plotly
-ipykernel
-matplotlib
-pytest
